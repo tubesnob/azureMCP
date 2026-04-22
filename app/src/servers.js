@@ -59,13 +59,13 @@ const DEFINITIONS = {
     buildSpawn(settings, { deviceAuthDir }) {
       const inner = buildAzureMcpCommand(settings);
       const [cmd, ...args] = spawnArgs(this.ssePort, inner);
-      const env = buildEnv(
-        {
-          AZURE_CONFIG_DIR: deviceAuthDir,
-          AZURE_MCP_COLLECT_TELEMETRY: 'false',
-        },
-        settings.extraEnv,
-      );
+      const baseEnv = {
+        AZURE_CONFIG_DIR: deviceAuthDir,
+        AZURE_MCP_COLLECT_TELEMETRY: 'false',
+      };
+      if (settings.tenantId) baseEnv.AZURE_TENANT_ID = settings.tenantId;
+      if (settings.subscriptionId) baseEnv.AZURE_SUBSCRIPTION_ID = settings.subscriptionId;
+      const env = buildEnv(baseEnv, settings.extraEnv);
       return { cmd, args, env };
     },
     version() {

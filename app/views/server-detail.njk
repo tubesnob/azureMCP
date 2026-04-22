@@ -33,6 +33,12 @@
             <option value="AzureChinaCloud" {% if serverSettings.cloud == 'AzureChinaCloud' %}selected{% endif %}>AzureChinaCloud</option>
           </select>
         </label>
+        <label>Default tenant (optional — GUID or domain, e.g. <code>contoso.onmicrosoft.com</code>)
+          <input type="text" name="tenantId" value="{{ serverSettings.tenantId }}" placeholder="leave blank to use Azure CLI default">
+        </label>
+        <label>Default subscription (optional — GUID or display name)
+          <input type="text" name="subscriptionId" value="{{ serverSettings.subscriptionId }}" placeholder="leave blank to use Azure CLI default">
+        </label>
       {% elif server.id == 'azure-devops-mcp' %}
         <label>Organization (required)
           <input type="text" name="organization" value="{{ serverSettings.organization }}" placeholder="contoso" required>

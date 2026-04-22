@@ -10,6 +10,8 @@ const DEFAULTS = Object.freeze({
     enabled: true,
     autoStart: true,
     cloud: 'AzureCloud',
+    tenantId: '',
+    subscriptionId: '',
     extraEnv: {},
   },
   azureDevOpsMcp: {

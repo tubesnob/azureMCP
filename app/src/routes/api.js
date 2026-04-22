@@ -128,6 +128,8 @@ function register(app, { supervisor, auth, saveSettings }) {
       current.enabled = body.enabled === 'on' || body.enabled === true;
       current.autoStart = body.autoStart === 'on' || body.autoStart === true;
       if (body.cloud) current.cloud = body.cloud;
+      if (body.tenantId !== undefined) current.tenantId = String(body.tenantId).trim();
+      if (body.subscriptionId !== undefined) current.subscriptionId = String(body.subscriptionId).trim();
     } else if (s.def.id === 'azure-devops-mcp') {
       current.enabled = body.enabled === 'on' || body.enabled === true;
       current.autoStart = body.autoStart === 'on' || body.autoStart === true;
