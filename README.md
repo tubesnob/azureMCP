@@ -5,20 +5,20 @@ A single Docker image (`tubesnob-azuremcp`) that embeds:
 - **Azure MCP Server** — [`@azure/mcp`](https://www.npmjs.com/package/@azure/mcp)
 - **Azure DevOps MCP Server** — [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp)
 - A **management web UI** to start/stop/restart each server, edit configuration, view live logs and stats, and sign in to Azure via device code.
-- A **stdio→SSE bridge** ([`supergateway`](https://github.com/supercorp-ai/supergateway)) so remote MCP clients can connect over HTTP.
+- A **stdio→Streamable HTTP bridge** ([`supergateway`](https://github.com/supercorp-ai/supergateway)) so remote MCP clients can connect over HTTP.
 
 Both MCP servers share a single `az login` session, so one device-code sign-in authenticates both.
 
 ## Purpose
 
-This container packages the `@azure/mcp` and `@azure-devops/mcp` Model Context Protocol servers, a small management UI, and the Azure CLI into one image. The goal is to let an MCP-aware client (Claude Code, the VS Code MCP extension, etc.) talk to Azure resources and Azure DevOps projects over a stable SSE endpoint without needing a per-host Node/Azure-CLI install on every machine that runs the client.
+This container packages the `@azure/mcp` and `@azure-devops/mcp` Model Context Protocol servers, a small management UI, and the Azure CLI into one image. The goal is to let an MCP-aware client (Claude Code, Cursor, the VS Code MCP extension, etc.) talk to Azure resources and Azure DevOps projects over a stable HTTP endpoint without needing a per-host Node/Azure-CLI install on every machine that runs the client.
 
 ## How it works internally
 
-The container runs a Fastify-based supervisor process (this UI, port `19900`). The supervisor launches the upstream MCP servers as child processes and wraps each one with [`supergateway`](https://github.com/supercorp-ai/supergateway), which bridges the server's stdio MCP transport to an SSE transport on a dedicated port:
+The container runs a Fastify-based supervisor process (this UI, port `19900`). The supervisor launches the upstream MCP servers as child processes and wraps each one with [`supergateway`](https://github.com/supercorp-ai/supergateway), which bridges the server's stdio MCP transport to a Streamable HTTP MCP transport on a dedicated port, served at `/mcp`:
 
-- **Port 19901** — Azure MCP (`@azure/mcp`)
-- **Port 19902** — Azure DevOps MCP (`@azure-devops/mcp`)
+- **Port 19901** — Azure MCP (`@azure/mcp`), endpoint `/mcp`
+- **Port 19902** — Azure DevOps MCP (`@azure-devops/mcp`), endpoint `/mcp`
 
 Azure authentication is handled by the bundled Azure CLI using the device-code flow. The resulting token cache is stored in `/config/azure`, which `docker-compose.example.yml` mounts from `~/.azureMCPContainer/config` so the login survives container restarts and image rebuilds. Child-process state, restarts, CPU/RSS stats, and per-server log tailing (via `rotating-file-stream`) are managed by the supervisor and surfaced to the UI through htmx partials and an SSE stream.
 
@@ -27,8 +27,8 @@ Azure authentication is handled by the bundled Azure CLI using the device-code f
 | Port | Purpose |
 |------|---------|
 | 19900 | Management web UI |
-| 19901 | Azure MCP SSE endpoint (`/sse`) |
-| 19902 | Azure DevOps MCP SSE endpoint (`/sse`) |
+| 19901 | Azure MCP Streamable HTTP endpoint (`/mcp`) |
+| 19902 | Azure DevOps MCP Streamable HTTP endpoint (`/mcp`) |
 
 ## Volumes
 
@@ -73,12 +73,21 @@ docker compose up -d
 
 ## Connecting MCP clients
 
-Point your MCP client (Claude Code, VS Code MCP extension, etc.) at:
+Point your MCP client (Claude Code, Cursor, VS Code MCP extension, etc.) at:
 
-- Azure MCP → `http://<host>:19901/sse`
-- Azure DevOps MCP → `http://<host>:19902/sse`
+- Azure MCP → `http://<host>:19901/mcp`
+- Azure DevOps MCP → `http://<host>:19902/mcp`
 
-These are standard MCP over SSE endpoints exposed by supergateway. The inner stdio servers are spawned and managed by the supervisor.
+These are standard MCP over Streamable HTTP endpoints exposed by supergateway in stateful mode. The inner stdio servers are spawned and managed by the supervisor. Example Cursor `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "azureMCP":       { "url": "http://localhost:19901/mcp" },
+    "azureDevOpsMCP": { "url": "http://localhost:19902/mcp" }
+  }
+}
+```
 
 ## Authentication details
 
@@ -123,7 +132,7 @@ This project stands on the following open-source work:
 
 - [`@azure/mcp`](https://github.com/Azure/azure-mcp) — Microsoft Azure MCP server (MIT)
 - [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp) — Microsoft Azure DevOps MCP server (MIT)
-- [`supergateway`](https://github.com/supercorp-ai/supergateway) — stdio ↔ SSE MCP bridge (MIT)
+- [`supergateway`](https://github.com/supercorp-ai/supergateway) — stdio ↔ Streamable HTTP / SSE MCP bridge (MIT)
 - [Azure CLI](https://github.com/Azure/azure-cli) — official `az` command-line tool (MIT)
 - [Node.js](https://nodejs.org) runtime (MIT)
 - [Fastify](https://fastify.dev) + `@fastify/view`, `@fastify/static`, `@fastify/formbody` (MIT)

@@ -3,166 +3,122 @@ const { URL } = require('url');
 
 const PROTOCOL_VERSION = '2024-11-05';
 
-function parseSseEvent(raw) {
+function parseSseMessage(raw) {
   const lines = raw.split(/\r?\n/);
-  let event = null;
   const dataLines = [];
   for (const line of lines) {
     if (line.startsWith(':') || line === '') continue;
     const idx = line.indexOf(':');
     const field = idx === -1 ? line : line.slice(0, idx);
     const value = idx === -1 ? '' : line.slice(idx + 1).replace(/^ /, '');
-    if (field === 'event') event = value;
-    else if (field === 'data') dataLines.push(value);
+    if (field === 'data') dataLines.push(value);
   }
-  if (dataLines.length === 0 && !event) return null;
-  return { event: event || 'message', data: dataLines.join('\n') };
+  if (dataLines.length === 0) return null;
+  return dataLines.join('\n');
 }
 
-function resolveEndpoint(sseUrl, endpointData) {
-  return new URL(endpointData, sseUrl).toString();
-}
-
-class MCPClient {
-  constructor(sseUrl) {
-    this.sseUrl = sseUrl;
-    this.messageUrl = null;
-    this.sseReq = null;
-    this.sseRes = null;
-    this.pending = new Map();
+class MCPStreamableHttpClient {
+  constructor(url) {
+    this.url = url;
+    this.sessionId = null;
     this.nextId = 1;
-    this.closed = false;
-    this.readyPromise = null;
   }
 
-  connect(timeoutMs) {
-    this.readyPromise = new Promise((resolve, reject) => {
-      const to = setTimeout(() => {
-        reject(new Error('SSE connect timed out waiting for endpoint event'));
-        this.close();
-      }, timeoutMs);
-
-      const req = http.get(
-        this.sseUrl,
-        { headers: { Accept: 'text/event-stream' } },
-        (res) => {
-          if (res.statusCode !== 200) {
-            clearTimeout(to);
-            reject(new Error(`SSE connect failed with HTTP ${res.statusCode}`));
-            res.resume();
-            this.close();
-            return;
-          }
-          this.sseRes = res;
-          res.setEncoding('utf8');
-          let buf = '';
-          res.on('data', (chunk) => {
-            buf += chunk.replace(/\r\n/g, '\n');
-            let sep;
-            while ((sep = buf.indexOf('\n\n')) !== -1) {
-              const raw = buf.slice(0, sep);
-              buf = buf.slice(sep + 2);
-              const ev = parseSseEvent(raw);
-              if (!ev) continue;
-              if (ev.event === 'endpoint' && !this.messageUrl) {
-                this.messageUrl = resolveEndpoint(this.sseUrl, ev.data.trim());
-                clearTimeout(to);
-                resolve();
-              } else if (ev.event === 'message') {
-                this._onMessage(ev.data);
-              }
-            }
-          });
-          res.on('end', () => this._failAll(new Error('SSE stream ended')));
-          res.on('error', (err) => this._failAll(err));
-        },
-      );
-      req.on('error', (err) => {
-        clearTimeout(to);
-        reject(err);
-      });
-      this.sseReq = req;
-    });
-    return this.readyPromise;
-  }
-
-  _onMessage(raw) {
-    let msg;
-    try {
-      msg = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (msg.id == null) return;
-    const entry = this.pending.get(msg.id);
-    if (!entry) return;
-    this.pending.delete(msg.id);
-    clearTimeout(entry.timeout);
-    if (msg.error) {
-      entry.reject(new Error(msg.error.message || `MCP error ${msg.error.code}`));
-    } else {
-      entry.resolve(msg.result);
-    }
-  }
-
-  _failAll(err) {
-    if (this.closed) return;
-    for (const entry of this.pending.values()) {
-      clearTimeout(entry.timeout);
-      entry.reject(err);
-    }
-    this.pending.clear();
-    this.close();
-  }
-
-  _post(body) {
+  _post(body, { timeoutMs }) {
     return new Promise((resolve, reject) => {
-      const u = new URL(this.messageUrl);
+      const u = new URL(this.url);
+      const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'Content-Length': Buffer.byteLength(body),
+      };
+      if (this.sessionId) headers['Mcp-Session-Id'] = this.sessionId;
+
       const req = http.request(
         {
           hostname: u.hostname,
           port: u.port,
           path: u.pathname + u.search,
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(body),
-          },
+          headers,
         },
         (res) => {
-          res.resume();
-          if (res.statusCode >= 400) {
-            reject(new Error(`POST to MCP endpoint failed with HTTP ${res.statusCode}`));
-          } else {
-            resolve();
-          }
+          const sessionHeader = res.headers['mcp-session-id'];
+          if (sessionHeader && !this.sessionId) this.sessionId = sessionHeader;
+          const contentType = (res.headers['content-type'] || '').toLowerCase();
+          const chunks = [];
+          res.setEncoding('utf8');
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => {
+            const text = chunks.join('');
+            if (res.statusCode === 202) {
+              resolve(null);
+              return;
+            }
+            if (res.statusCode >= 400) {
+              reject(new Error(`HTTP ${res.statusCode} from MCP endpoint: ${text.slice(0, 300)}`));
+              return;
+            }
+            if (contentType.includes('text/event-stream')) {
+              const blocks = text.split(/\n\n+/);
+              for (const block of blocks) {
+                const payload = parseSseMessage(block);
+                if (!payload) continue;
+                try {
+                  const msg = JSON.parse(payload);
+                  if (msg && Object.prototype.hasOwnProperty.call(msg, 'result')) {
+                    resolve(msg);
+                    return;
+                  }
+                  if (msg && Object.prototype.hasOwnProperty.call(msg, 'error')) {
+                    resolve(msg);
+                    return;
+                  }
+                } catch {
+                  // skip non-JSON frames
+                }
+              }
+              reject(new Error('SSE response contained no JSON-RPC response message'));
+              return;
+            }
+            if (!text) {
+              resolve(null);
+              return;
+            }
+            try {
+              resolve(JSON.parse(text));
+            } catch (err) {
+              reject(new Error(`Non-JSON response from MCP endpoint: ${text.slice(0, 300)}`));
+            }
+          });
+          res.on('error', reject);
         },
       );
-      req.on('error', reject);
+      const to = setTimeout(() => {
+        req.destroy(new Error(`MCP request timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      req.on('error', (err) => {
+        clearTimeout(to);
+        reject(err);
+      });
+      req.on('close', () => clearTimeout(to));
       req.write(body);
       req.end();
     });
   }
 
   async rpc(method, params, timeoutMs) {
-    if (!this.messageUrl) throw new Error('MCP client not connected');
     const id = this.nextId++;
     const body = JSON.stringify({ jsonrpc: '2.0', id, method, params });
-    const promise = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`MCP request "${method}" timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timeout });
-    });
-    await this._post(body);
-    return promise;
+    const msg = await this._post(body, { timeoutMs });
+    if (!msg) throw new Error(`MCP request "${method}" returned no body`);
+    if (msg.error) throw new Error(msg.error.message || `MCP error ${msg.error.code}`);
+    return msg.result;
   }
 
-  async notify(method, params) {
-    if (!this.messageUrl) throw new Error('MCP client not connected');
+  async notify(method, params, timeoutMs) {
     const body = JSON.stringify({ jsonrpc: '2.0', method, params });
-    await this._post(body);
+    await this._post(body, { timeoutMs });
   }
 
   async initialize(timeoutMs) {
@@ -175,7 +131,7 @@ class MCPClient {
       },
       timeoutMs,
     );
-    await this.notify('notifications/initialized', {});
+    await this.notify('notifications/initialized', {}, timeoutMs);
     return result;
   }
 
@@ -188,13 +144,25 @@ class MCPClient {
     return this.rpc('tools/call', { name, arguments: args || {} }, timeoutMs);
   }
 
-  close() {
-    if (this.closed) return;
-    this.closed = true;
+  async close(timeoutMs = 5000) {
+    if (!this.sessionId) return;
     try {
-      this.sseReq?.destroy();
+      await new Promise((resolve) => {
+        const u = new URL(this.url);
+        const req = http.request({
+          hostname: u.hostname,
+          port: u.port,
+          path: u.pathname + u.search,
+          method: 'DELETE',
+          headers: { 'Mcp-Session-Id': this.sessionId },
+        }, (res) => { res.resume(); res.on('end', resolve); res.on('error', resolve); });
+        req.on('error', resolve);
+        const to = setTimeout(() => { req.destroy(); resolve(); }, timeoutMs);
+        req.on('close', () => clearTimeout(to));
+        req.end();
+      });
     } catch {
-      // ignore
+      // best effort
     }
   }
 }
@@ -263,11 +231,10 @@ function summarizeProjects(parsed, text) {
   return { count: list.length, preview };
 }
 
-async function runTest({ sseUrl, toolPatterns, toolArgs, summarize, timeoutMs = 30000 }) {
-  const client = new MCPClient(sseUrl);
+async function runTest({ mcpUrl, toolPatterns, toolArgs, summarize, timeoutMs = 30000 }) {
+  const client = new MCPStreamableHttpClient(mcpUrl);
   const start = Date.now();
   try {
-    await client.connect(timeoutMs);
     await client.initialize(timeoutMs);
     const tools = await client.listTools(timeoutMs);
     const tool = pickTool(tools, toolPatterns);
@@ -291,13 +258,13 @@ async function runTest({ sseUrl, toolPatterns, toolArgs, summarize, timeoutMs = 
       durationMs: Date.now() - start,
     };
   } finally {
-    client.close();
+    await client.close();
   }
 }
 
-async function testAzureMcp({ ssePort, timeoutMs }) {
+async function testAzureMcp({ mcpPort, timeoutMs }) {
   return runTest({
-    sseUrl: `http://127.0.0.1:${ssePort}/sse`,
+    mcpUrl: `http://127.0.0.1:${mcpPort}/mcp`,
     toolPatterns: [/^azmcp[_-]subscription[_-]list$/i, /subscription[_-]list$/i, /subscription$/i],
     toolArgs: {},
     summarize: summarizeSubscriptions,
@@ -305,18 +272,18 @@ async function testAzureMcp({ ssePort, timeoutMs }) {
   });
 }
 
-async function testAzureDevOpsMcp({ ssePort, project, timeoutMs }) {
+async function testAzureDevOpsMcp({ mcpPort, timeoutMs }) {
   return runTest({
-    sseUrl: `http://127.0.0.1:${ssePort}/sse`,
+    mcpUrl: `http://127.0.0.1:${mcpPort}/mcp`,
     toolPatterns: [/^core_list_projects$/i, /list[_-]projects?$/i, /projects?[_-]list$/i],
-    toolArgs: project ? { project } : {},
+    toolArgs: {},
     summarize: summarizeProjects,
     timeoutMs,
   });
 }
 
 module.exports = {
-  MCPClient,
+  MCPStreamableHttpClient,
   testAzureMcp,
   testAzureDevOpsMcp,
 };

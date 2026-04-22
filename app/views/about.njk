@@ -6,7 +6,7 @@
     <img src="/public/tubesnob-icon.jpeg" alt="TubeSnob">
     <div>
       <h1>About</h1>
-      <p class="muted">A self-hosted bundle that exposes the Azure and Azure DevOps MCP servers over HTTP/SSE.</p>
+      <p class="muted">A self-hosted bundle that exposes the Azure and Azure DevOps MCP servers over Streamable HTTP.</p>
     </div>
   </div>
 
@@ -16,7 +16,7 @@
       This container packages the <code>@azure/mcp</code> and <code>@azure-devops/mcp</code>
       Model Context Protocol servers, a small management UI, and the Azure CLI into one image.
       The goal is to let an MCP-aware client (for example Claude Code or another agent) talk to
-      Azure resources and Azure DevOps projects over a stable SSE endpoint without needing a
+      Azure resources and Azure DevOps projects over a stable HTTP endpoint without needing a
       per-host Node/Azure-CLI install on every machine that runs the client.
     </p>
   </section>
@@ -27,11 +27,12 @@
       The container runs a Fastify-based supervisor process (this UI, port <code>19900</code>).
       The supervisor launches the upstream MCP servers as child processes and wraps each one
       with <a href="https://github.com/supercorp-ai/supergateway">supergateway</a>, which bridges
-      the server's stdio MCP transport to an SSE transport on a dedicated port:
+      the server's stdio MCP transport to a Streamable HTTP MCP transport on a dedicated port,
+      served at <code>/mcp</code>:
     </p>
     <ul>
-      <li><strong>Port 19901</strong> — Azure MCP (<code>@azure/mcp</code>)</li>
-      <li><strong>Port 19902</strong> — Azure DevOps MCP (<code>@azure-devops/mcp</code>)</li>
+      <li><strong>Port 19901</strong> — Azure MCP (<code>@azure/mcp</code>), endpoint <code>/mcp</code></li>
+      <li><strong>Port 19902</strong> — Azure DevOps MCP (<code>@azure-devops/mcp</code>), endpoint <code>/mcp</code></li>
     </ul>
     <p>
       Azure authentication is handled by the bundled Azure CLI using the device-code flow.
@@ -103,7 +104,7 @@
     <ul class="attributions">
       <li><a href="https://github.com/Azure/azure-mcp">@azure/mcp</a> — Microsoft Azure MCP server (MIT)</li>
       <li><a href="https://github.com/microsoft/azure-devops-mcp">@azure-devops/mcp</a> — Microsoft Azure DevOps MCP server (MIT)</li>
-      <li><a href="https://github.com/supercorp-ai/supergateway">supergateway</a> — stdio &harr; SSE MCP bridge (MIT)</li>
+      <li><a href="https://github.com/supercorp-ai/supergateway">supergateway</a> — stdio &harr; Streamable HTTP / SSE MCP bridge (MIT)</li>
       <li><a href="https://github.com/Azure/azure-cli">Azure CLI</a> — official <code>az</code> command-line tool (MIT)</li>
       <li><a href="https://nodejs.org">Node.js</a> runtime (MIT)</li>
       <li><a href="https://fastify.dev">Fastify</a> + <code>@fastify/view</code>, <code>@fastify/static</code>, <code>@fastify/formbody</code> (MIT)</li>

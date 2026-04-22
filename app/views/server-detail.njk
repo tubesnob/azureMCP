@@ -6,7 +6,7 @@
   <p class="muted">
     Version <code>{{ server.version or 'unknown' }}</code> ·
     State <strong>{{ server.state }}</strong> ·
-    SSE endpoint <code>http://&lt;host&gt;:{{ server.ssePort }}/sse</code>
+    MCP endpoint <code>http://&lt;host&gt;:{{ server.mcpPort }}/mcp</code>
   </p>
   <div class="actions">
     <button class="btn primary" hx-post="/api/servers/{{ server.id }}/start" hx-swap="none">Start</button>

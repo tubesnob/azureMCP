@@ -41,8 +41,15 @@ function buildAdoMcpCommand(settings) {
   return inner.join(' ');
 }
 
-function spawnArgs(ssePort, innerCommand) {
-  return [SUPERGATEWAY_BIN, '--stdio', innerCommand, '--port', String(ssePort)];
+function spawnArgs(mcpPort, innerCommand) {
+  return [
+    SUPERGATEWAY_BIN,
+    '--stdio', innerCommand,
+    '--outputTransport', 'streamableHttp',
+    '--streamableHttpPath', '/mcp',
+    '--stateful',
+    '--port', String(mcpPort),
+  ];
 }
 
 function buildEnv(base, extra) {
@@ -53,12 +60,12 @@ const DEFINITIONS = {
   'azure-mcp': {
     id: 'azure-mcp',
     label: 'Azure MCP',
-    ssePort: Number(process.env.AZURE_MCP_SSE_PORT || 19901),
+    mcpPort: Number(process.env.AZURE_MCP_PORT || 19901),
     packageName: '@azure/mcp',
     settingsKey: 'azureMcp',
     buildSpawn(settings, { deviceAuthDir }) {
       const inner = buildAzureMcpCommand(settings);
-      const [cmd, ...args] = spawnArgs(this.ssePort, inner);
+      const [cmd, ...args] = spawnArgs(this.mcpPort, inner);
       const baseEnv = {
         AZURE_CONFIG_DIR: deviceAuthDir,
         AZURE_MCP_COLLECT_TELEMETRY: 'false',
@@ -75,18 +82,21 @@ const DEFINITIONS = {
   'azure-devops-mcp': {
     id: 'azure-devops-mcp',
     label: 'Azure DevOps MCP',
-    ssePort: Number(process.env.ADO_MCP_SSE_PORT || 19902),
+    mcpPort: Number(process.env.ADO_MCP_PORT || 19902),
     packageName: '@azure-devops/mcp',
     settingsKey: 'azureDevOpsMcp',
     buildSpawn(settings, { deviceAuthDir }) {
       const inner = buildAdoMcpCommand(settings);
-      const [cmd, ...args] = spawnArgs(this.ssePort, inner);
+      const [cmd, ...args] = spawnArgs(this.mcpPort, inner);
       const extra = {
         AZURE_CONFIG_DIR: deviceAuthDir,
         LOG_LEVEL: settings.logLevel || 'info',
       };
       if (settings.authMode === 'pat' && settings.personalAccessToken) {
-        extra.PERSONAL_ACCESS_TOKEN = settings.personalAccessToken;
+        // @azure-devops/mcp expects PERSONAL_ACCESS_TOKEN as base64("<anything>:<PAT>"),
+        // HTTP Basic Auth style — it decodes, splits on ":", takes everything after the
+        // first colon. Passing the raw PAT silently falls through to anonymous auth.
+        extra.PERSONAL_ACCESS_TOKEN = Buffer.from(`:${settings.personalAccessToken}`, 'utf8').toString('base64');
       }
       return { cmd, args, env: buildEnv(extra) };
     },

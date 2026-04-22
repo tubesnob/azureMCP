@@ -27,7 +27,7 @@
         <div><dt>CPU</dt><dd>{% if s.stats %}{{ (s.stats.cpu | round(1)) }}%{% else %}—{% endif %}</dd></div>
         <div><dt>Memory</dt><dd>{% if s.stats %}{{ ((s.stats.memory / 1024 / 1024) | round(1)) }} MB{% else %}—{% endif %}</dd></div>
         <div><dt>Restarts</dt><dd>{{ s.restartCount }}</dd></div>
-        <div><dt>SSE port</dt><dd><code>{{ s.ssePort }}</code></dd></div>
+        <div><dt>MCP port</dt><dd><code>{{ s.mcpPort }}</code></dd></div>
       </dl>
       {% if s.lastError %}<p class="error">Error: {{ s.lastError }}</p>{% endif %}
       {% if s.lastTestResult %}

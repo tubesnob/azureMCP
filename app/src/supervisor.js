@@ -35,7 +35,7 @@ class ServerProcess extends EventEmitter {
     return {
       id: this.def.id,
       label: this.def.label,
-      ssePort: this.def.ssePort,
+      mcpPort: this.def.mcpPort,
       state: this.state,
       pid: this.child?.pid ?? null,
       startedAt: this.startedAt,

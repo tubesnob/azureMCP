@@ -8,8 +8,7 @@ async function collectSnapshot(supervisor) {
   for (const s of supervisor.list()) {
     const snap = s.snapshot();
     snap.stats = await s.stats();
-    snap.sseUrl = `/mcp/${s.def.id}/sse`;
-    snap.directSseUrl = `http://<host>:${s.def.ssePort}/sse`;
+    snap.mcpUrl = `http://<host>:${s.def.mcpPort}/mcp`;
     rows.push(snap);
   }
   return rows;
@@ -25,8 +24,7 @@ function register(app, { supervisor, auth, saveSettings }) {
     if (!s) return reply.code(404).send({ error: 'not found' });
     const snap = s.snapshot();
     snap.stats = await s.stats();
-    snap.sseUrl = `/mcp/${s.def.id}/sse`;
-    snap.directSseUrl = `http://<host>:${s.def.ssePort}/sse`;
+    snap.mcpUrl = `http://<host>:${s.def.mcpPort}/mcp`;
     return snap;
   });
 
@@ -77,14 +75,12 @@ function register(app, { supervisor, auth, saveSettings }) {
       let result;
       if (s.def.id === 'azure-mcp') {
         result = await mcpClient.testAzureMcp({
-          ssePort: s.def.ssePort,
+          mcpPort: s.def.mcpPort,
           timeoutMs: TEST_TIMEOUT_MS,
         });
       } else if (s.def.id === 'azure-devops-mcp') {
-        const cfg = supervisor.settingsFor(s.def.id);
         result = await mcpClient.testAzureDevOpsMcp({
-          ssePort: s.def.ssePort,
-          project: cfg?.organization,
+          mcpPort: s.def.mcpPort,
           timeoutMs: TEST_TIMEOUT_MS,
         });
       } else {
