@@ -1,0 +1,124 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+<div class="about">
+  <div class="hero">
+    <img src="/public/tubesnob-icon.jpeg" alt="TubeSnob">
+    <div>
+      <h1>About</h1>
+      <p class="muted">A self-hosted bundle that exposes the Azure and Azure DevOps MCP servers over HTTP/SSE.</p>
+    </div>
+  </div>
+
+  <section>
+    <h2>Purpose</h2>
+    <p>
+      This container packages the <code>@azure/mcp</code> and <code>@azure-devops/mcp</code>
+      Model Context Protocol servers, a small management UI, and the Azure CLI into one image.
+      The goal is to let an MCP-aware client (for example Claude Code or another agent) talk to
+      Azure resources and Azure DevOps projects over a stable SSE endpoint without needing a
+      per-host Node/Azure-CLI install on every machine that runs the client.
+    </p>
+  </section>
+
+  <section>
+    <h2>How it works internally</h2>
+    <p>
+      The container runs a Fastify-based supervisor process (this UI, port <code>19900</code>).
+      The supervisor launches the upstream MCP servers as child processes and wraps each one
+      with <a href="https://github.com/supercorp-ai/supergateway">supergateway</a>, which bridges
+      the server's stdio MCP transport to an SSE transport on a dedicated port:
+    </p>
+    <ul>
+      <li><strong>Port 19901</strong> — Azure MCP (<code>@azure/mcp</code>)</li>
+      <li><strong>Port 19902</strong> — Azure DevOps MCP (<code>@azure-devops/mcp</code>)</li>
+    </ul>
+    <p>
+      Azure authentication is handled by the bundled Azure CLI using the device-code flow.
+      The resulting token cache is stored in <code>/config/azure</code>, which the
+      <code>docker-compose.example.yml</code> mounts from <code>~/.azureMCPContainer/config</code>
+      so the login survives container restarts and image rebuilds. Child-process state, restarts,
+      CPU/RSS stats, and per-server log tailing (via <code>rotating-file-stream</code>) are
+      managed by the supervisor and surfaced to the UI through htmx partials and an SSE stream.
+    </p>
+  </section>
+
+  <section>
+    <h2>FAQ</h2>
+
+    <details>
+      <summary>The dashboard says "Not signed in to Azure" and the servers won't start.</summary>
+      <p>
+        The supervisor refuses to auto-start the MCP servers until <code>az login</code> has
+        succeeded, because both servers need a valid token to do anything useful. Go to
+        <a href="/auth">Auth</a> and complete the device-code flow. Once sign-in finishes the
+        configured servers start automatically.
+      </p>
+    </details>
+
+    <details>
+      <summary>Logs show "File logging is disabled."</summary>
+      <p>
+        The container tries to write per-server logs to <code>/logs</code>. If that path
+        isn't mounted to a writable host directory, the supervisor falls back to in-memory
+        ring buffers only. Mount a host directory at <code>/logs</code>
+        (the example compose file uses <code>~/.azureMCPContainer/logs</code>) and restart.
+      </p>
+    </details>
+
+    <details>
+      <summary>My <code>az login</code> session keeps disappearing.</summary>
+      <p>
+        That usually means <code>/config</code> isn't persisted. The Azure CLI stores its token
+        cache under <code>AZURE_CONFIG_DIR=/config/azure</code>, so if <code>/config</code> is an
+        anonymous volume or isn't mounted at all, every <code>docker compose down</code> wipes
+        the login. Bind-mount a host directory (<code>~/.azureMCPContainer/config</code> by
+        convention) to <code>/config</code>.
+      </p>
+    </details>
+
+    <details>
+      <summary>Port 19900 / 19901 / 19902 is already in use.</summary>
+      <p>
+        Remap the host side in <code>docker-compose.yml</code>
+        (for example <code>"29900:19900"</code>). The container always listens on the fixed
+        internal ports; only the host-side mapping needs to change.
+      </p>
+    </details>
+
+    <details>
+      <summary>A server shows "crashed" and keeps restarting.</summary>
+      <p>
+        Open the server detail page from the dashboard to see the tailed log. The most common
+        causes are an expired Azure token (re-run sign-in), a missing Azure DevOps organization
+        URL in Settings, or an upstream <code>npm</code> package that failed to resolve because
+        the image was built without network access.
+      </p>
+    </details>
+  </section>
+
+  <section>
+    <h2>Attributions</h2>
+    <p>This project stands on the following open-source work:</p>
+    <ul class="attributions">
+      <li><a href="https://github.com/Azure/azure-mcp">@azure/mcp</a> — Microsoft Azure MCP server (MIT)</li>
+      <li><a href="https://github.com/microsoft/azure-devops-mcp">@azure-devops/mcp</a> — Microsoft Azure DevOps MCP server (MIT)</li>
+      <li><a href="https://github.com/supercorp-ai/supergateway">supergateway</a> — stdio &harr; SSE MCP bridge (MIT)</li>
+      <li><a href="https://github.com/Azure/azure-cli">Azure CLI</a> — official <code>az</code> command-line tool (MIT)</li>
+      <li><a href="https://nodejs.org">Node.js</a> runtime (MIT)</li>
+      <li><a href="https://fastify.dev">Fastify</a> + <code>@fastify/view</code>, <code>@fastify/static</code>, <code>@fastify/formbody</code> (MIT)</li>
+      <li><a href="https://mozilla.github.io/nunjucks/">Nunjucks</a> templating (BSD-2-Clause)</li>
+      <li><a href="https://getpino.io">pino</a> structured logging (MIT)</li>
+      <li><a href="https://github.com/soyuka/pidusage">pidusage</a> process stats (MIT)</li>
+      <li><a href="https://github.com/iccicci/rotating-file-stream">rotating-file-stream</a> (MIT)</li>
+      <li><a href="https://htmx.org">htmx</a> HTML-over-the-wire UI (BSD-2-Clause/0BSD)</li>
+      <li><a href="https://github.com/krallin/tini">tini</a> PID 1 init (MIT)</li>
+      <li><a href="https://www.debian.org">Debian</a> base image (various OSS licenses)</li>
+    </ul>
+    <p class="muted">
+      This bundle itself is released under the MIT License &mdash; see the
+      <code>LICENSE</code> file at the root of the repository.
+    </p>
+  </section>
+</div>
+{% endblock %}

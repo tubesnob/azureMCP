@@ -1,0 +1,24 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+<h1>Azure authentication</h1>
+<p class="muted">
+  The container shares one <code>az login</code> session between both MCP servers.
+  Signing in here authenticates both Azure MCP (via <code>DefaultAzureCredential</code>) and
+  Azure DevOps MCP (via <code>-a azcli</code>).
+</p>
+
+<div id="auth-pane"
+     hx-get="/partials/auth-status"
+     hx-trigger="load, every 3s"
+     hx-swap="innerHTML">
+  {% include "partials/auth-status.njk" %}
+</div>
+
+<section class="panel">
+  <h2>Device-code flow</h2>
+  <p class="muted">When you click "Sign in", the container runs <code>az login --use-device-code</code>. Copy the code to the Microsoft login page to complete sign-in.</p>
+  <div id="device-code-log" class="log small"
+       data-sse="/api/auth/stream"></div>
+</section>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+<header class="page-head">
+  <h1>{{ server.label }}</h1>
+  <p class="muted">
+    Version <code>{{ server.version or 'unknown' }}</code> ·
+    State <strong>{{ server.state }}</strong> ·
+    SSE endpoint <code>http://&lt;host&gt;:{{ server.ssePort }}/sse</code>
+  </p>
+  <div class="actions">
+    <button class="btn primary" hx-post="/api/servers/{{ server.id }}/start" hx-swap="none">Start</button>
+    <button class="btn" hx-post="/api/servers/{{ server.id }}/restart" hx-swap="none">Restart</button>
+    <button class="btn danger" hx-post="/api/servers/{{ server.id }}/stop" hx-swap="none">Stop</button>
+    <a class="btn subtle" href="/">Back</a>
+  </div>
+</header>
+
+<div class="split">
+  <section class="panel">
+    <h2>Configuration</h2>
+    <form hx-post="/api/servers/{{ server.id }}/config"
+          hx-swap="none"
+          class="form">
+      <label class="inline"><input type="checkbox" name="enabled" {% if serverSettings.enabled %}checked{% endif %}> Enabled</label>
+      <label class="inline"><input type="checkbox" name="autoStart" {% if serverSettings.autoStart %}checked{% endif %}> Auto-start on boot</label>
+
+      {% if server.id == 'azure-mcp' %}
+        <label>Azure cloud
+          <select name="cloud">
+            <option value="AzureCloud" {% if serverSettings.cloud == 'AzureCloud' %}selected{% endif %}>AzureCloud (Public)</option>
+            <option value="AzureUSGovernment" {% if serverSettings.cloud == 'AzureUSGovernment' %}selected{% endif %}>AzureUSGovernment</option>
+            <option value="AzureChinaCloud" {% if serverSettings.cloud == 'AzureChinaCloud' %}selected{% endif %}>AzureChinaCloud</option>
+          </select>
+        </label>
+      {% elif server.id == 'azure-devops-mcp' %}
+        <label>Organization (required)
+          <input type="text" name="organization" value="{{ serverSettings.organization }}" placeholder="contoso" required>
+        </label>
+        <label>Tenant ID (optional, multi-tenant)
+          <input type="text" name="tenantId" value="{{ serverSettings.tenantId }}">
+        </label>
+        <label>Authentication
+          <select name="authMode">
+            <option value="azcli" {% if serverSettings.authMode == 'azcli' %}selected{% endif %}>Azure CLI session (recommended)</option>
+            <option value="pat" {% if serverSettings.authMode == 'pat' %}selected{% endif %}>Personal Access Token</option>
+          </select>
+        </label>
+        <label>PAT (only used when auth = PAT)
+          <input type="password" name="personalAccessToken" value="{{ serverSettings.personalAccessToken }}" placeholder="leave blank to keep current">
+        </label>
+        <label>Domains (space or comma separated; use <code>all</code> for all)
+          <input type="text" name="domains" value="{{ serverSettings.domains | join(' ') }}">
+        </label>
+        <label>Log level
+          <select name="logLevel">
+            {% for lvl in ['error', 'warn', 'info', 'debug'] %}
+              <option value="{{ lvl }}" {% if serverSettings.logLevel == lvl %}selected{% endif %}>{{ lvl }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <div class="form-actions">
+        <button type="submit" class="btn primary">Save (restarts if running)</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Live log</h2>
+    <div id="log-pane" class="log"
+         data-server="{{ server.id }}"
+         data-sse="/api/servers/{{ server.id }}/logs"></div>
+  </section>
+</div>
+{% endblock %}

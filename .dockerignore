@@ -1,0 +1,8 @@
+app/node_modules
+config
+logs
+.git
+.gitignore
+.DS_Store
+README.md
+docker-compose.example.yml

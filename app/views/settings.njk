@@ -1,0 +1,34 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+<h1>Settings</h1>
+
+<section class="panel">
+  <h2>Logging</h2>
+  {% if not logsDirWritable %}
+    <div class="notice">
+      The logs directory <code>{{ logsDir }}</code> is not mounted or not writable.
+      Mount a host volume at <code>{{ logsDir }}</code> to enable persistent log files.
+      Live logs remain available in the UI via in-memory ring buffers.
+    </div>
+  {% endif %}
+  <form class="form" hx-post="/api/settings" hx-swap="none">
+    <label class="inline">
+      <input type="checkbox" name="fileLogging" {% if settings.ui.fileLogging %}checked{% endif %} {% if not logsDirWritable %}disabled{% endif %}>
+      Persist logs to <code>{{ logsDir }}</code> (rotated 10 MB × 5)
+    </label>
+    <label>
+      Ring buffer size (lines, per server)
+      <input type="number" name="ringBufferLines" min="100" max="100000" value="{{ settings.ui.ringBufferLines }}">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Current settings (redacted)</h2>
+  <pre class="code">{{ settings | dump(2) }}</pre>
+</section>
+{% endblock %}

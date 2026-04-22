@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} · Azure MCP Bundle</title>
+    <link rel="icon" type="image/jpeg" href="/public/tubesnob-icon.jpeg">
+    <link rel="stylesheet" href="/public/styles.css">
+    <script src="/public/htmx.min.js" defer></script>
+    <script src="/public/sse.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a href="/" class="brand">Azure MCP Bundle</a>
+      <nav>
+        <a href="/">Dashboard</a>
+        <a href="/auth">Auth</a>
+        <a href="/settings">Settings</a>
+        <a href="/about">About</a>
+      </nav>
+    </header>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

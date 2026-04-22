@@ -1,0 +1,23 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+<section class="auth-banner {{ 'ok' if auth.signedIn else 'warn' }}">
+  {% if auth.signedIn %}
+    Signed in as <strong>{{ auth.user }}</strong> · tenant <code>{{ auth.tenantId }}</code> · subscription <code>{{ auth.subscription }}</code>
+    <a class="btn subtle" href="/auth">Manage</a>
+  {% else %}
+    Not signed in to Azure. <a class="btn primary" href="/auth">Sign in</a>
+  {% endif %}
+</section>
+
+{% if not logsDirWritable %}
+  <div class="notice">File logging is disabled. Mount a writable volume at <code>{{ logsDir }}</code> to persist logs outside the container.</div>
+{% endif %}
+
+<div id="server-cards"
+     hx-get="/partials/servers"
+     hx-trigger="every 2s"
+     hx-swap="innerHTML">
+  {% include "partials/server-cards.njk" %}
+</div>
+{% endblock %}

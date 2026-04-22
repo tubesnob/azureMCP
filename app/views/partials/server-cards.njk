@@ -1,0 +1,74 @@
+{% macro statusDot(state) %}
+  {% if state == 'running' %}<span class="dot running" title="running"></span>
+  {% elif state == 'starting' or state == 'stopping' %}<span class="dot pending" title="{{ state }}"></span>
+  {% elif state == 'crashed' or state == 'error' %}<span class="dot crashed" title="{{ state }}"></span>
+  {% else %}<span class="dot stopped" title="{{ state }}"></span>
+  {% endif %}
+{% endmacro %}
+
+{% macro uptime(ms) %}
+  {% if ms > 0 %}
+    {% set sec = (ms / 1000) | int %}
+    {% if sec < 60 %}{{ sec }}s{% elif sec < 3600 %}{{ (sec / 60) | int }}m{% elif sec < 86400 %}{{ (sec / 3600) | int }}h {{ ((sec % 3600) / 60) | int }}m{% else %}{{ (sec / 86400) | int }}d {{ ((sec % 86400) / 3600) | int }}h{% endif %}
+  {% else %}—{% endif %}
+{% endmacro %}
+
+<div class="cards">
+  {% for s in servers %}
+    <article class="card">
+      <header>
+        <h2><a href="/servers/{{ s.id }}">{{ s.label }}</a></h2>
+        {{ statusDot(s.state) }} <span class="state">{{ s.state }}</span>
+      </header>
+      <dl class="stats">
+        <div><dt>Version</dt><dd>{{ s.version or '—' }}</dd></div>
+        <div><dt>PID</dt><dd>{{ s.pid or '—' }}</dd></div>
+        <div><dt>Uptime</dt><dd>{{ uptime(s.uptimeMs) }}</dd></div>
+        <div><dt>CPU</dt><dd>{% if s.stats %}{{ (s.stats.cpu | round(1)) }}%{% else %}—{% endif %}</dd></div>
+        <div><dt>Memory</dt><dd>{% if s.stats %}{{ ((s.stats.memory / 1024 / 1024) | round(1)) }} MB{% else %}—{% endif %}</dd></div>
+        <div><dt>Restarts</dt><dd>{{ s.restartCount }}</dd></div>
+        <div><dt>SSE port</dt><dd><code>{{ s.ssePort }}</code></dd></div>
+      </dl>
+      {% if s.lastError %}<p class="error">Error: {{ s.lastError }}</p>{% endif %}
+      {% if s.lastTestResult %}
+        <div class="test-result {{ 'ok' if s.lastTestResult.ok else 'fail' }}">
+          <div class="test-result-head">
+            <strong>Test {{ 'passed' if s.lastTestResult.ok else 'failed' }}</strong>
+            <span class="muted">{{ (s.lastTestResult.durationMs / 1000) | round(2) }}s</span>
+          </div>
+          {% if s.lastTestResult.ok %}
+            <div class="muted">tool: <code>{{ s.lastTestResult.tool }}</code></div>
+            {% if s.lastTestResult.count != null %}
+              <div>{{ s.lastTestResult.count }} result{{ 's' if s.lastTestResult.count != 1 else '' }}{% if s.lastTestResult.preview %}: {{ s.lastTestResult.preview }}{% endif %}</div>
+            {% else %}
+              <div class="test-preview">{{ s.lastTestResult.preview }}</div>
+            {% endif %}
+          {% else %}
+            <div class="error">{{ s.lastTestResult.error }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      <footer class="actions">
+        <button class="btn {{ 'primary' if s.state != 'running' else '' }}"
+                hx-post="/api/servers/{{ s.id }}/start"
+                hx-swap="none"
+                {% if s.state == 'running' or s.state == 'starting' %}disabled{% endif %}>Start</button>
+        <button class="btn"
+                hx-post="/api/servers/{{ s.id }}/restart"
+                hx-swap="none"
+                {% if s.state != 'running' %}disabled{% endif %}>Restart</button>
+        <button class="btn danger"
+                hx-post="/api/servers/{{ s.id }}/stop"
+                hx-swap="none"
+                {% if s.state != 'running' and s.state != 'starting' %}disabled{% endif %}>Stop</button>
+        <button class="btn"
+                hx-post="/api/servers/{{ s.id }}/test"
+                hx-swap="none"
+                {% if s.state != 'running' or s.testing %}disabled{% endif %}>
+          {% if s.testing %}Testing…{% else %}Test{% endif %}
+        </button>
+        <a class="btn subtle" href="/servers/{{ s.id }}">Details</a>
+      </footer>
+    </article>
+  {% endfor %}
+</div>

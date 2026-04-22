@@ -1,0 +1,15 @@
+services:
+  tubesnob-azuremcp:
+    build: .
+    image: tubesnob-azuremcp:latest
+    container_name: tubesnob-azuremcp
+    restart: unless-stopped
+    ports:
+      - "19900:19900"   # management UI
+      - "19901:19901"   # Azure MCP SSE
+      - "19902:19902"   # Azure DevOps MCP SSE
+    volumes:
+      - ${HOME}/.azureMCPContainer/config:/config   # required: persists settings + az login session
+      - ${HOME}/.azureMCPContainer/logs:/logs       # optional: persists per-server log files
+    # environment:
+    #   LOG_LEVEL: info
